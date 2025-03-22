@@ -8,19 +8,22 @@ import gdown
 import yfinance as yf
 import mplfinance as mpf
 import datetime
+import pandas as pd
 
-# Google DriveのファイルIDとモデルパス
+# Google DriveのファイルIDと保存先パス
 file_id = "1ZVb43bovhpM-L1AzdHQSCurL-Kx5N5kj"
 model_path = "chart_pattern_model.h5"
 
 # モデルがなければGoogle Driveからダウンロード
-if not os.path.exists(model_path):
-    st.write("モデルをダウンロード中です...")
-    url = f"https://drive.google.com/uc?id={file_id}"
-    gdown.download(url, model_path, quiet=False)
+@st.cache_resource
+def load_ai_model():
+    if not os.path.exists(model_path):
+        st.write("モデルをダウンロード中です...")
+        url = f"https://drive.google.com/uc?id={file_id}"
+        gdown.download(url, model_path, quiet=False)
+    return load_model(model_path)
 
-# モデル読み込み
-model = load_model(model_path)
+model = load_ai_model()
 
 # タイトル
 st.title("チャート画像パターン予測AI")
@@ -32,34 +35,30 @@ symbol = st.text_input("株コードを入力してください（例：7203.T�
 # ボタンが押されたらチャート生成＋予測
 if st.button("予測する") and symbol:
     try:
-        # 今日の日付と60営業日前を計算
+        # 日付設定（過去90日分を取得）
         end = datetime.date.today()
-        start = end - datetime.timedelta(days=90)  # 60営業日分を確保するため多めに取得
+        start = end - datetime.timedelta(days=90)
 
-        # データ取得
+        # 株価データ取得
         data = yf.download(symbol, start=start, end=end)
 
-        # カラムがMultiIndexなら平坦化
+        # カラムがMultiIndexの場合フラット化
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.droplevel(1)
 
-        # 欠損除去
         data = data.dropna()
-
-        # 必要な列のみfloatに変換
         for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
             data[col] = data[col].astype(float)
 
-        # 60本以上あるか確認
         if len(data) < 60:
-            st.warning("データが60日分未満のため、チャートが生成できません。")
+            st.warning("60日以上のデータがないため、予測できません。")
         else:
-            # 最後の60日分をチャートとして使う
+            # チャート画像生成
             chart_data = data[-60:]
             chart_path = f"{symbol}_latest.png"
             mpf.plot(chart_data, type='candle', style='charles', savefig=chart_path)
 
-            # チャート画像を表示
+            # 表示
             st.image(chart_path, caption=f"{symbol} のチャート（過去60日）", use_column_width=True)
 
             # AI予測

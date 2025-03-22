@@ -5,3 +5,4 @@ numpy
 gdown
 mplfinance
 yfinance
+pandas
